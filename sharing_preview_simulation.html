@@ -1,0 +1,573 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社交平台分享预览模拟 (Social Sharing Previews)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .phone-frame {
+            width: 375px;
+            background: white;
+            border-radius: 40px;
+            border: 12px solid #1f2937;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            margin: 0 auto;
+        }
+
+        .btn-hover {
+            transition: transform 0.1s;
+        }
+
+        .btn-hover:active {
+            transform: scale(0.95);
+        }
+    </style>
+    <script>
+        const SHARE_DATA = {
+            link: "https://bono55.com/invite/uk882",
+            text: "Win amazing bonuses at Bono55! 🎁 Sign up with my link and claim your reward now:",
+            hashtags: "casino,bonus,win",
+            previewImage: "https://images.unsplash.com/photo-1518893494013-481c1d8ed3fd?auto=format&fit=crop&w=1200&h=630",
+            ogTitle: "Register & Get $50 Bonus",
+            ogDesc: "Best odds, instant payout, 24/7 support."
+        };
+
+        const PLATFORM_META = {
+            whatsapp: { name: "WhatsApp", endpoint: "https://api.whatsapp.com/send", direct: ['text'] },
+            telegram: { name: "Telegram", endpoint: "https://t.me/share/url", direct: ['url', 'text'] },
+            twitter: { name: "X(Twitter)", endpoint: "https://twitter.com/intent/tweet", direct: ['text', 'url', 'hashtags'] },
+            facebook: { name: "Facebook", endpoint: "https://www.facebook.com/sharer/sharer.php", direct: ['u'] }
+        };
+        let activePlatform = 'whatsapp';
+
+        function buildPlatformUrl(platform) {
+            const { link, text, hashtags } = SHARE_DATA;
+            const fullText = `${text} ${link}`;
+            const encText = encodeURIComponent(text);
+            const encLink = encodeURIComponent(link);
+            const encFull = encodeURIComponent(fullText);
+
+            switch (platform) {
+                case 'whatsapp':
+                    return `https://api.whatsapp.com/send?text=${encFull}`;
+                case 'telegram':
+                    return `https://t.me/share/url?url=${encLink}&text=${encText}`;
+                case 'twitter':
+                    return `https://twitter.com/intent/tweet?text=${encText}&url=${encLink}&hashtags=${hashtags}`;
+                case 'facebook':
+                    return `https://www.facebook.com/sharer/sharer.php?u=${encLink}`;
+                default:
+                    return "";
+            }
+        }
+
+        function decodeParams(url) {
+            try {
+                const u = new URL(url);
+                const items = Array.from(u.searchParams.entries());
+                if (!items.length) return '无参数';
+                return items.map(([k, v]) => `${k}=${decodeURIComponent(v)}`).join('\n');
+            } catch (_) {
+                return '参数解析失败';
+            }
+        }
+
+        function renderApiParamPanel(activePlatform) {
+            const panel = document.getElementById('api-param-panel-list');
+            if (!panel) return;
+
+            const platforms = ['whatsapp', 'telegram', 'twitter', 'facebook'];
+            panel.innerHTML = platforms.map((p) => {
+                const url = buildPlatformUrl(p);
+                const activeClass = p === activePlatform ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white';
+                const activeText = p === activePlatform ? '<span class="ml-2 text-[10px] text-blue-600 font-semibold">当前点击</span>' : '';
+                const direct = PLATFORM_META[p].direct.join(', ');
+                const extraNote = p === 'facebook'
+                    ? '正文无法稳定直传，依赖复制粘贴。'
+                    : '标题/描述/图片均来自链接页 OG 抓取（非直传）。';
+                return `
+                    <div class="rounded-lg border ${activeClass} p-3">
+                        <div class="text-sm font-semibold text-gray-800">${PLATFORM_META[p].name}${activeText}</div>
+                        <div class="text-[11px] text-gray-500 mt-1">接口: ${PLATFORM_META[p].endpoint}</div>
+                        <div class="text-[11px] text-emerald-700 mt-1">直传参数: ${direct}</div>
+                        <div class="text-[11px] text-amber-700 mt-1">OG字段(非直传): title / description / image</div>
+                        <div class="text-[11px] text-gray-500 mt-1">${extraNote}</div>
+                        <div class="text-[11px] text-gray-500 mt-1 break-all">URL: ${url}</div>
+                        <pre class="mt-2 text-[11px] text-gray-700 whitespace-pre-wrap">${decodeParams(url)}</pre>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updatePreviewImages(url) {
+            const ids = ['img_wa', 'img_tg', 'img_tw', 'img_fb'];
+            ids.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.src = url;
+            });
+        }
+
+        function getLinkDomain(link) {
+            try {
+                return new URL(link).hostname;
+            } catch (_) {
+                return 'example.com';
+            }
+        }
+
+        function updatePreviewMeta() {
+            const domain = getLinkDomain(SHARE_DATA.link);
+            const titleIds = ['wa_preview_title', 'tg_preview_title', 'tw_preview_title', 'fb_preview_title'];
+            const descIds = ['wa_preview_desc', 'tg_preview_desc', 'tw_preview_desc', 'fb_preview_desc'];
+            const domainIds = ['wa_preview_domain', 'tg_preview_domain', 'tw_preview_domain', 'fb_preview_domain'];
+
+            titleIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = SHARE_DATA.ogTitle;
+            });
+            descIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = SHARE_DATA.ogDesc;
+            });
+            domainIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = domain;
+            });
+        }
+
+        function updatePreviewBody() {
+            const text = SHARE_DATA.text || '';
+            const link = SHARE_DATA.link || '';
+            const hashtags = (SHARE_DATA.hashtags || '')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .map((s) => `#${s}`)
+                .join(' ');
+
+            const waTextEl = document.getElementById('wa_body_text');
+            const waLinkEl = document.getElementById('wa_body_link');
+            if (waTextEl) waTextEl.textContent = `${text} `;
+            if (waLinkEl) waLinkEl.textContent = link;
+
+            const tgTextEl = document.getElementById('tg_body_text');
+            const tgLinkEl = document.getElementById('tg_body_link');
+            if (tgTextEl) tgTextEl.textContent = `${text} `;
+            if (tgLinkEl) tgLinkEl.textContent = link;
+            if (tgLinkEl) tgLinkEl.href = link;
+
+            const twTextEl = document.getElementById('tw_body_text');
+            const twLinkEl = document.getElementById('tw_body_link');
+            const twTagsEl = document.getElementById('tw_body_tags');
+            if (twTextEl) twTextEl.textContent = text || '...';
+            if (twLinkEl) twLinkEl.textContent = link;
+            if (twTagsEl) twTagsEl.textContent = hashtags || '#share';
+
+            const fbTextEl = document.getElementById('fb_body_text');
+            if (fbTextEl) fbTextEl.textContent = text || '(User pastes text here manually...)';
+        }
+
+        async function handleShare(platform) {
+            const { link, text } = SHARE_DATA;
+            const fullText = `${text} ${link}`;
+            activePlatform = platform;
+
+            try {
+                await navigator.clipboard.writeText(fullText);
+                console.log("Text copied to clipboard");
+            } catch (err) {
+                console.error("Clipboard failed", err);
+            }
+
+            const url = buildPlatformUrl(platform);
+
+            if (platform === 'facebook') {
+                alert("提示: 文案已自动复制！\n由于 Facebook 限制，请在打开的页面中长按粘贴文案。");
+            }
+
+            renderApiParamPanel(platform);
+            if (url) window.open(url, '_blank');
+        }
+
+        function fillConfigInputs() {
+            const linkEl = document.getElementById('cfg_link');
+            const textEl = document.getElementById('cfg_text');
+            const hashtagsEl = document.getElementById('cfg_hashtags');
+            const titleEl = document.getElementById('cfg_og_title');
+            const descEl = document.getElementById('cfg_og_desc');
+            if (linkEl) linkEl.value = SHARE_DATA.link;
+            if (textEl) textEl.value = SHARE_DATA.text;
+            if (hashtagsEl) hashtagsEl.value = SHARE_DATA.hashtags;
+            if (titleEl) titleEl.value = SHARE_DATA.ogTitle;
+            if (descEl) descEl.value = SHARE_DATA.ogDesc;
+        }
+
+        function applyShareConfig() {
+            const linkEl = document.getElementById('cfg_link');
+            const textEl = document.getElementById('cfg_text');
+            const hashtagsEl = document.getElementById('cfg_hashtags');
+            const titleEl = document.getElementById('cfg_og_title');
+            const descEl = document.getElementById('cfg_og_desc');
+            const statusEl = document.getElementById('cfg_status');
+
+            const link = (linkEl?.value || '').trim();
+            const text = (textEl?.value || '').trim();
+            const hashtags = (hashtagsEl?.value || '').trim();
+            const ogTitle = (titleEl?.value || '').trim();
+            const ogDesc = (descEl?.value || '').trim();
+
+            if (!link || !text) {
+                if (statusEl) {
+                    statusEl.textContent = '请至少填写链接和文案正文。';
+                    statusEl.className = 'text-xs text-red-500';
+                }
+                return;
+            }
+
+            SHARE_DATA.link = link;
+            SHARE_DATA.text = text;
+            SHARE_DATA.hashtags = hashtags;
+            SHARE_DATA.ogTitle = ogTitle || SHARE_DATA.ogTitle;
+            SHARE_DATA.ogDesc = ogDesc || SHARE_DATA.ogDesc;
+            const imageUrl = (document.getElementById('cfg_image_url')?.value || '').trim();
+            if (imageUrl) SHARE_DATA.previewImage = imageUrl;
+            updatePreviewImages(SHARE_DATA.previewImage);
+            updatePreviewMeta();
+            updatePreviewBody();
+            renderApiParamPanel(activePlatform);
+
+            if (statusEl) {
+                statusEl.textContent = '配置已应用，分享按钮与参数面板已更新。';
+                statusEl.className = 'text-xs text-green-600';
+            }
+        }
+
+        function resetShareConfig() {
+            SHARE_DATA.link = "https://bono55.com/invite/uk882";
+            SHARE_DATA.text = "Win amazing bonuses at Bono55! 🎁 Sign up with my link and claim your reward now:";
+            SHARE_DATA.hashtags = "casino,bonus,win";
+            SHARE_DATA.previewImage = "https://images.unsplash.com/photo-1518893494013-481c1d8ed3fd?auto=format&fit=crop&w=1200&h=630";
+            SHARE_DATA.ogTitle = "Register & Get $50 Bonus";
+            SHARE_DATA.ogDesc = "Best odds, instant payout, 24/7 support.";
+            fillConfigInputs();
+            const imageUrlEl = document.getElementById('cfg_image_url');
+            if (imageUrlEl) imageUrlEl.value = SHARE_DATA.previewImage;
+            updatePreviewImages(SHARE_DATA.previewImage);
+            updatePreviewMeta();
+            updatePreviewBody();
+            renderApiParamPanel(activePlatform);
+            const statusEl = document.getElementById('cfg_status');
+            if (statusEl) {
+                statusEl.textContent = '已恢复默认配置。';
+                statusEl.className = 'text-xs text-gray-500';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', function () {
+            fillConfigInputs();
+            renderApiParamPanel('whatsapp');
+            const applyBtn = document.getElementById('cfg_apply');
+            const resetBtn = document.getElementById('cfg_reset');
+            const uploadEl = document.getElementById('cfg_image_upload');
+            const imageUrlEl = document.getElementById('cfg_image_url');
+            if (imageUrlEl) imageUrlEl.value = SHARE_DATA.previewImage;
+            updatePreviewImages(SHARE_DATA.previewImage);
+            updatePreviewMeta();
+            updatePreviewBody();
+            if (applyBtn) applyBtn.addEventListener('click', applyShareConfig);
+            if (resetBtn) resetBtn.addEventListener('click', resetShareConfig);
+            if (uploadEl) {
+                uploadEl.addEventListener('change', function (e) {
+                    const file = e.target.files && e.target.files[0];
+                    const statusEl = document.getElementById('cfg_status');
+                    if (!file) return;
+                    if (!file.type.startsWith('image/')) {
+                        if (statusEl) {
+                            statusEl.textContent = '请上传图片文件。';
+                            statusEl.className = 'text-xs text-red-500';
+                        }
+                        return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = function () {
+                        SHARE_DATA.previewImage = String(reader.result || '');
+                        updatePreviewImages(SHARE_DATA.previewImage);
+                        updatePreviewMeta();
+                        updatePreviewBody();
+                        if (imageUrlEl) imageUrlEl.value = SHARE_DATA.previewImage;
+                        if (statusEl) {
+                            statusEl.textContent = '图片已上传并应用到预览。';
+                            statusEl.className = 'text-xs text-green-600';
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+        });
+    </script>
+</head>
+
+<body class="p-10 flex flex-col gap-10 items-center">
+
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-4xl border-2 border-indigo-100 text-center">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">🚀 功能测试：一键分享跳转</h1>
+        <p class="text-gray-500 mb-8">点击下方的图标，模拟从您的平台发起分享。将直接唤起对应 APP 或网页并自动填入文案。<br>(Click buttons below to test the actual 'One-Click Jump' functionality)</p>
+
+        <div class="flex flex-wrap justify-center gap-6">
+            <button onclick="handleShare('whatsapp')" class="btn-hover flex flex-col items-center gap-2 group">
+                <div class="w-16 h-16 rounded-full bg-[#25D366] text-white flex items-center justify-center text-3xl shadow-lg group-hover:shadow-green-200 duration-300">
+                    <i class="fab fa-whatsapp"></i>
+                </div>
+                <span class="font-medium text-gray-700">WhatsApp</span>
+            </button>
+
+            <button onclick="handleShare('telegram')" class="btn-hover flex flex-col items-center gap-2 group">
+                <div class="w-16 h-16 rounded-full bg-[#0088cc] text-white flex items-center justify-center text-3xl shadow-lg group-hover:shadow-blue-200 duration-300">
+                    <i class="fab fa-telegram-plane"></i>
+                </div>
+                <span class="font-medium text-gray-700">Telegram</span>
+            </button>
+
+            <button onclick="handleShare('twitter')" class="btn-hover flex flex-col items-center gap-2 group">
+                <div class="w-16 h-16 rounded-full bg-black text-white flex items-center justify-center text-3xl shadow-lg group-hover:shadow-gray-400 duration-300">
+                    <i class="fab fa-x-twitter"></i>
+                </div>
+                <span class="font-medium text-gray-700">X (Twitter)</span>
+            </button>
+
+            <button onclick="handleShare('facebook')" class="btn-hover flex flex-col items-center gap-2 group">
+                <div class="w-16 h-16 rounded-full bg-[#1877F2] text-white flex items-center justify-center text-3xl shadow-lg group-hover:shadow-blue-200 duration-300">
+                    <i class="fab fa-facebook-f"></i>
+                </div>
+                <span class="font-medium text-gray-700">Facebook</span>
+            </button>
+        </div>
+
+        <div class="mt-8 p-4 bg-gray-50 rounded-lg text-sm text-gray-500 text-left mx-auto max-w-2xl">
+            <strong>测试说明 (Instructions):</strong>
+            <ul class="list-disc pl-5 mt-1 space-y-1">
+                <li><strong>WhatsApp/Telegram/X</strong>: 点击后会打开新窗口（或唤起APP），输入框内应已<b>自动填充</b>了文案和链接。</li>
+                <li><strong>Facebook</strong>: 点击后会提示“文案已复制”，随后打开分享弹窗。您需要手动粘贴文案 (这是 FB 官方限制的绕过方案)。</li>
+            </ul>
+        </div>
+    </div>
+
+    <section class="w-full max-w-6xl -mt-4 mb-2 px-2">
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
+            <div class="text-sm font-bold text-gray-800 mb-2">接口传输参数（严格真实平台）</div>
+            <div class="text-xs text-gray-500 mb-3">绿色为可直传参数；橙色为 OG 抓取字段（非分享 URL 直传）。点击上方平台按钮会高亮当前项。</div>
+            <div id="api-param-panel-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+    </section>
+
+    <div class="w-full h-px bg-gray-300 my-4"></div>
+    <h2 class="text-2xl font-bold text-gray-400 uppercase tracking-widest">Preview Mockups (效果预览)</h2>
+
+    <div class="flex flex-wrap gap-10 justify-center w-full">
+
+        <div class="flex flex-col items-center">
+            <h2 class="text-xl font-bold mb-4 text-green-600"><i class="fab fa-whatsapp text-2xl mr-2"></i>WhatsApp 效果模拟</h2>
+            <div class="phone-frame h-[600px] flex flex-col">
+                <div class="bg-[#008069] h-20 p-4 pt-8 flex items-center text-white gap-3 shadow-sm z-10">
+                    <i class="fas fa-arrow-left"></i>
+                    <div class="w-8 h-8 rounded-full bg-gray-300"></div>
+                    <div class="flex-1 font-medium">Friend</div>
+                    <i class="fas fa-video"></i>
+                    <i class="fas fa-phone"></i>
+                    <i class="fas fa-ellipsis-v"></i>
+                </div>
+                <div class="flex-1 p-4 relative bg-[#e5ddd5]">
+                    <div class="ml-auto bg-[#d9fdd3] rounded-lg p-2 max-w-[85%] shadow-sm text-sm text-gray-800 relative">
+                        <div class="mb-1">
+                            <span id="wa_body_link" class="text-[#2f6ea5] underline break-all">https://bono55.com/invite/uk882</span>
+                        </div>
+                        <div class="mb-2 leading-snug">
+                            <span id="wa_body_text">Win amazing bonuses at Bono55! 🎁 Sign up with my link and claim your reward now:</span>
+                        </div>
+                        <div class="bg-[#f0f2f5] rounded-md overflow-hidden flex cursor-pointer border-l-[3px] border-gray-300">
+                            <div class="w-20 h-20 bg-gray-300 shrink-0 relative overflow-hidden">
+                                <img id="img_wa" alt="wa-preview" class="w-full h-full object-cover" />
+                            </div>
+                            <div class="p-2 flex flex-col justify-center min-w-0">
+                                <div id="wa_preview_title" class="font-bold truncate text-gray-900 text-sm">Register & Get $50 Bonus</div>
+                                <div id="wa_preview_desc" class="text-xs text-gray-500 truncate">Asian top gaming platform...</div>
+                                <div id="wa_preview_domain" class="text-xs text-gray-400 mt-1">bono55.com</div>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-gray-500 text-right mt-1 flex items-center justify-end gap-1">15:42 <i class="fas fa-check-double text-blue-500"></i></div>
+                    </div>
+                </div>
+                <div class="h-16 bg-white flex items-center px-2 gap-2">
+                    <i class="far fa-smile text-gray-500 text-xl p-2"></i>
+                    <div class="flex-1 bg-white rounded-full px-4 py-2 text-gray-400 text-sm border-none shadow-sm">Message</div>
+                    <div class="w-10 h-10 bg-[#008069] rounded-full flex items-center justify-center text-white"><i class="fas fa-microphone"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center">
+            <h2 class="text-xl font-bold mb-4 text-blue-500"><i class="fab fa-telegram text-2xl mr-2"></i>Telegram 效果模拟</h2>
+            <div class="phone-frame h-[600px] flex flex-col">
+                <div class="bg-white h-20 p-4 pt-8 flex items-center text-[#111827] gap-4 shadow-sm z-10 border-b border-gray-200">
+                    <i class="fas fa-arrow-left"></i>
+                    <div class="w-8 h-8 rounded-full bg-[#4da7e6] flex items-center justify-center text-white text-xs">S</div>
+                    <div class="flex-1 flex flex-col">
+                        <div class="font-semibold">Mensajes guardados</div>
+                        <div class="text-xs text-gray-400">online</div>
+                    </div>
+                    <i class="fas fa-search text-gray-600"></i>
+                    <i class="fas fa-ellipsis-v text-gray-600"></i>
+                </div>
+                <div class="flex-1 bg-[#dbeac9] p-4 flex flex-col gap-4">
+                    <div class="self-end bg-[#d9fdd3] rounded-xl rounded-tr-none p-2 max-w-[88%] text-[#1f2937] text-sm shadow-md">
+                        <div class="px-1 mb-1">
+                            <a id="tg_body_link" href="#" class="text-[#2f6ea5] underline break-all">https://bono55.com/invite/uk882</a>
+                        </div>
+                        <div class="px-1 mb-2 leading-snug"><span id="tg_body_text">Join me and win big at Bono55!</span></div>
+                        <div class="rounded border-l-[3px] border-[#6fbf73] bg-[#edf8e8] overflow-hidden">
+                            <div id="tg_preview_domain" class="px-2 pt-2 text-[#4d9a52] text-xs font-semibold">bono55.com</div>
+                            <div id="tg_preview_title" class="px-2 pt-0.5 text-[#1f2937] font-bold leading-snug">Register & Get $50 Bonus</div>
+                            <div id="tg_preview_desc" class="px-2 pb-2 text-xs text-[#374151] leading-snug">Asian top gaming platform...</div>
+                            <div class="h-24 bg-[#1f354c]">
+                                <img id="img_tg" alt="tg-preview" class="w-full h-full object-cover" />
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-[#6b7280] text-right mt-1 flex items-center justify-end gap-1">15:43 <i class="fas fa-check text-xs"></i></div>
+                    </div>
+                </div>
+                <div class="h-14 bg-white flex items-center px-4 gap-4 border-t border-gray-200">
+                    <i class="far fa-smile text-gray-400 text-xl"></i>
+                    <div class="flex-1 text-gray-400 text-sm">Mensaje</div>
+                    <i class="fas fa-paperclip text-gray-400 text-xl"></i>
+                    <i class="fas fa-microphone text-[#4da7e6] text-xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center">
+            <h2 class="text-xl font-bold mb-4 text-black"><i class="fab fa-x-twitter text-2xl mr-2"></i>X (Twitter) 效果模拟</h2>
+            <div class="phone-frame h-[600px] flex flex-col bg-black text-white">
+                <div class="bg-black h-20 p-4 pt-8 flex items-center justify-between z-10 border-b border-gray-800">
+                    <span class="text-white font-bold">Cancel</span>
+                    <span class="text-blue-400 font-bold bg-white/10 px-4 py-1.5 rounded-full text-sm">Post</span>
+                </div>
+                <div class="flex-1 p-4 flex gap-3">
+                    <div class="w-10 h-10 rounded-full bg-gray-700 shrink-0"></div>
+                    <div class="flex-1">
+                        <div class="text-base mb-3 text-white">
+                            <span id="tw_body_text">Just won 1000 USDT on this platform! 🚀</span><br>
+                            <span id="tw_body_link">https://bono55.com/invite/uk882</span><br>
+                            <span id="tw_body_tags" class="text-blue-400">#crypto #casino #win</span>
+                        </div>
+                        <div class="border border-gray-700 rounded-2xl overflow-hidden mt-2">
+                            <div class="h-36 bg-gray-800 relative overflow-hidden">
+                                <img id="img_tw" alt="tw-preview" class="w-full h-full object-cover" />
+                            </div>
+                            <div class="p-3 bg-black">
+                                <div id="tw_preview_domain" class="text-gray-500 text-xs mb-0.5">bono55.com</div>
+                                <div id="tw_preview_title" class="text-white text-sm font-medium truncate">Official Bono55 - Top 1 Gaming Site</div>
+                                <div id="tw_preview_desc" class="text-gray-400 text-xs truncate mt-0.5">Best odds, instant payout, 24/7 support.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-[#1c1c1e] h-[280px] w-full mt-auto flex items-center justify-center p-4">
+                    <div class="h-10 border-t border-gray-700 w-full flex items-center gap-6 text-blue-400 text-xl">
+                        <i class="far fa-image"></i>
+                        <i class="fas fa-gift"></i>
+                        <i class="fas fa-chart-bar"></i>
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center">
+            <h2 class="text-xl font-bold mb-4 text-blue-700"><i class="fab fa-facebook text-2xl mr-2"></i>Facebook 效果模拟</h2>
+            <div class="phone-frame h-[600px] flex flex-col bg-[#f0f2f5]">
+                <div class="bg-white h-20 p-4 pt-8 flex items-center justify-between shadow-sm z-10 px-4">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-arrow-left text-gray-800"></i>
+                        <span class="font-bold text-lg text-gray-800">Create Post</span>
+                    </div>
+                    <span class="text-gray-400 font-bold uppercase text-sm">Post</span>
+                </div>
+                <div class="flex-1 p-4 bg-white mt-1">
+                    <div class="text-base text-gray-800 mb-4 min-h-[60px] leading-snug">
+                        <span id="fb_body_text">(User pastes text here manually...)</span><br>
+                        <span class="text-gray-500 text-sm">Check this out!</span>
+                    </div>
+                    <div class="bg-gray-100 border border-gray-200 rounded-lg overflow-hidden">
+                        <div class="h-40 relative overflow-hidden">
+                            <img id="img_fb" alt="fb-preview" class="w-full h-full object-cover" />
+                        </div>
+                        <div class="p-3 bg-[#f0f2f5]">
+                            <div id="fb_preview_domain" class="text-gray-500 text-xs uppercase mb-1">bono55.com</div>
+                            <div id="fb_preview_title" class="text-gray-900 font-bold text-sm leading-tight mb-1">Registered & Get $50 Free Bonus</div>
+                            <div id="fb_preview_desc" class="text-gray-500 text-xs line-clamp-1">Best odds, instant payout, 24/7 support.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-auto bg-white p-4 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-2xl">
+                    <div class="flex justify-between items-center text-gray-800 font-medium mb-4">
+                        Add to your post
+                        <div class="flex gap-4 text-xl">
+                            <i class="fas fa-images text-green-500"></i>
+                            <i class="fas fa-user-tag text-blue-500"></i>
+                            <i class="far fa-laugh text-yellow-500"></i>
+                            <i class="fas fa-map-marker-alt text-red-500"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <section class="w-full max-w-6xl mt-2 bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <h3 class="text-lg font-bold text-gray-800 mb-2">分享测试配置模块</h3>
+        <p class="text-xs text-gray-500 mb-4">在这里修改文案、链接和标签后点击“应用配置”。其中 OG 标题/描述用于链接卡片预览，不是分享 URL 的直传参数。</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="text-sm text-gray-700">分享链接 (share_url)
+                <input id="cfg_link" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+            </label>
+            <label class="text-sm text-gray-700">标签 (hashtags，逗号分隔)
+                <input id="cfg_hashtags" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+            </label>
+            <label class="text-sm text-gray-700 md:col-span-2">分享正文 (share_text)
+                <textarea id="cfg_text" class="mt-1 w-full border rounded px-3 py-2 text-sm h-24"></textarea>
+            </label>
+            <label class="text-sm text-gray-700">OG 标题 (og:title，非直传)
+                <input id="cfg_og_title" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+            </label>
+            <label class="text-sm text-gray-700">OG 描述 (og:description，非直传)
+                <input id="cfg_og_desc" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+            </label>
+            <label class="text-sm text-gray-700 md:col-span-2">预览图 URL (可直接粘贴 CDN 地址)
+                <input id="cfg_image_url" class="mt-1 w-full border rounded px-3 py-2 text-sm" />
+            </label>
+            <label class="text-sm text-gray-700 md:col-span-2">上传预览图 (本地立即预览)
+                <input id="cfg_image_upload" type="file" accept="image/*" class="mt-1 w-full border rounded px-3 py-2 text-sm bg-white" />
+            </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+            <button id="cfg_apply" class="px-4 py-2 rounded bg-blue-600 text-white text-sm font-semibold">应用配置</button>
+            <button id="cfg_reset" class="px-4 py-2 rounded bg-gray-200 text-gray-800 text-sm font-semibold">恢复默认</button>
+            <span id="cfg_status" class="text-xs text-gray-500">未修改配置。</span>
+        </div>
+    </section>
+
+</body>
+
+</html>
